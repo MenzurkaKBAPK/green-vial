@@ -15,12 +15,14 @@ from discord.ext import commands
 from sqlalchemy.orm import Session
 
 from config import (
+    CHANNEL_TYPES,
     DISCORD_TOKEN,
     LOGGING_LEVEL,
     PERMISSION_LEVELS,
     PERMISSIONS
 )
 from data import db_session
+from data.channels import Channels
 from data.delayed_messages import DelayedMessage
 from data.permisions import UserPermissions
 from data.phrases import Phrase
@@ -50,7 +52,7 @@ logger.addHandler(handler)
 intents = discord.Intents.all()
 client = Bot(command_prefix="!", intents=intents)
 
-ABOBI = discord.Object(id=123452343241231)
+ABOBI = discord.Object(id=720193412485349437)
 MSC = datetime.timezone(
     datetime.timedelta(hours=3)
 )
@@ -58,6 +60,7 @@ MSC = datetime.timezone(
 updated_emission = False
 unsorted_data = dict()
 db_sess: Session = None
+private_channels = set()
 
 
 @client.command()
@@ -318,6 +321,158 @@ async def remove_permissions(ctx: commands.Context,
                     f"{PERMISSION_LEVELS[user_perm.permission_level][0]}"
                 ), ephemeral=True
             )
+
+
+@client.command()
+@commands.has_guild_permissions(administrator=True)
+async def add_new_channel(ctx: commands.Context,
+                          channel_link: str):
+    link_pattern = (
+        r"https:\/\/discord\.com\/channels\/(\d{18,18})\/(\d{18,19})"
+    )
+    match_ = re.fullmatch(link_pattern, channel_link)
+    if match_:
+        server_id = match_.group(1)
+        server = db_sess.query(Server).filter_by(
+            server_id=server_id
+        ).first()
+        if not server:
+            server = Server(
+                server_id=server_id
+            )
+            db_sess.add(server)
+        server_id = server.id
+
+        channel_id = match_.group(2)
+
+        guild = await client.fetch_guild(server.server_id)
+        voice_channel = await guild.fetch_channel(channel_id)
+
+        if isinstance(voice_channel, discord.VoiceChannel):
+            bot_member = (
+                guild.me if guild.me else await guild.fetch_member(
+                    ctx.bot.user.id)
+            )
+            if bot_member is None:
+                await ctx.reply(
+                    "Не удалось получить объект бота.",
+                    ephemeral=True
+                    )
+                return
+            permissions = voice_channel.permissions_for(bot_member)
+            if permissions.move_members:
+                channel = db_sess.query(Channels).filter_by(
+                    server_id=server_id,
+                    channel_id=channel_id
+                ).first()
+                if channel:
+                    await ctx.reply(
+                        (
+                            "Канал уже записан и "
+                            "для чего-то используется"
+                        ), ephemeral=True
+                    )
+                    return
+                channel = Channels(
+                    server_id=server_id,
+                    channel_id=channel_id,
+                    channel_type=CHANNEL_TYPES["NEW_CHANNEL"]
+                )
+                db_sess.add(channel)
+                db_sess.commit()
+                await ctx.reply(
+                    (
+                        "Запись создана, канал будет "
+                        "использоваться для создания личных комнат"
+                    ), ephemeral=True
+                )
+            else:
+                await ctx.reply(
+                    (
+                        "У бота недостаточно прав для "
+                        "перемещения участника из канала."
+                    ), ephemeral=True
+                )
+        db_sess.commit()
+    else:
+        await ctx.reply(
+            (
+                "Ссылка не соответствует шаблону "
+                "`https://discord.com/channels/"
+                "0000000000000000000/0000000000000000000`"
+            ), ephemeral=True
+        )
+
+
+@add_new_channel.error
+async def add_new_channel_error(ctx, error):
+    if isinstance(error, commands.MissingPermissions):
+        await ctx.send("У вас недостаточно прав для выполнения этой команды.")
+    else:
+        print(error)
+
+
+@client.command()
+@commands.has_guild_permissions(administrator=True)
+async def remove_new_channel(ctx: commands.Context,
+                             channel_link: str):
+    link_pattern = (
+        r"https:\/\/discord\.com\/channels\/(\d{18,18})\/(\d{18,19})"
+    )
+    match_ = re.fullmatch(link_pattern, channel_link)
+    if match_:
+        server_id = match_.group(1)
+        server = db_sess.query(Server).filter_by(
+            server_id=server_id
+        ).first()
+        if not server:
+            server = Server(
+                server_id=server_id
+            )
+            db_sess.add(server)
+        server_id = server.id
+
+        channel_id = match_.group(2)
+
+        guild = await client.fetch_guild(server.server_id)
+        voice_channel = await guild.fetch_channel(channel_id)
+
+        if isinstance(voice_channel, discord.VoiceChannel):
+            channel = db_sess.query(Channels).filter_by(
+                server_id=server_id,
+                channel_id=channel_id
+            ).first()
+            if not channel:
+                await ctx.reply(
+                    (
+                        "Канал не записан в базе"
+                    ), ephemeral=True
+                )
+                return
+            db_sess.delete(channel)
+            await ctx.reply(
+                (
+                    "Запись удалена, канал больше не будет "
+                    "использоваться"
+                ), ephemeral=True
+            )
+        db_sess.commit()
+    else:
+        await ctx.reply(
+            (
+                "Ссылка не соответствует шаблону "
+                "`https://discord.com/channels/"
+                "0000000000000000000/0000000000000000000`"
+            ), ephemeral=True
+        )
+
+
+@remove_new_channel.error
+async def remove_new_channel_error(ctx, error):
+    if isinstance(error, commands.MissingPermissions):
+        await ctx.send("У вас недостаточно прав для выполнения этой команды.")
+    else:
+        print(error)
 
 
 @client.command()
@@ -664,6 +819,50 @@ async def on_send_dms(bot: Bot):
     db_sess.commit()
 
 
+@client.event
+async def on_voice_state_update(member, before, after):
+    if after.channel:
+        server_id = member.guild.id
+        channel_id = after.channel.id
+
+        guild = db_sess.query(Server).filter_by(
+            server_id=server_id
+        ).first()
+        if not guild:
+            return
+
+        channel = db_sess.query(Channels).filter_by(
+            server_id=guild.id,
+            channel_id=channel_id,
+            channel_type=CHANNEL_TYPES["NEW_CHANNEL"]).first()
+
+        if channel:
+            print("Присоединение к [new channel]")
+            a = after.channel.overwrites
+            print(a)
+            for role, b in a.items():
+                print(type(role), role.id)
+                print(
+                    b._values
+                )
+
+            # логика создания канала
+
+            private_channels.add((server_id, channel_id))
+
+        return
+
+    if before.channel:
+        server_id = member.guild.id
+        channel_id = after.channel.id
+
+        if (server_id, channel_id) in private_channels:
+
+            # логика удаления канала
+
+            private_channels.remove((server_id, channel_id))
+
+
 def on_stats_update():
     global unsorted_data
     for key, value in unsorted_data.items():
@@ -716,13 +915,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-'''
-    - Отложенные сообщения [сделано]
-    - синхронизация по команде (только людей из вайтлиста)
-    - работа с вайтлистом, сам вайтлист
-    - вайтлист - таблица с полями [id, user_id, sync, add_whitelist,
-    remove_whitelist...] <- каждый столбец - разрешение на действие
-    - Спросить у траллки
-'''

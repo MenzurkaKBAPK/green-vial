@@ -45,3 +45,6 @@ PERMISSION_LEVELS = {
     2: ("Moderator", [0, 3]),
     3: ("Helper", [3])
 }
+CHANNEL_TYPES = {
+    "NEW_CHANNEL": 0
+}

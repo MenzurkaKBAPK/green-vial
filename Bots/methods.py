@@ -5,7 +5,12 @@ import discord
 import requests
 import schedule
 from discord import TextChannel
+from discord.member import Member, VoiceState
 from discord.ext import commands
+
+from data.channel_settings import ChannelSettings
+from data.servers import Server
+from data.users import User
 
 
 class HtmlToDict(HTMLParser):
@@ -90,3 +95,48 @@ def start_timer():
     while True:
         schedule.run_pending()
         sleep(1)
+
+
+async def create_channel(
+        client: Bot,
+        member: Member,
+        voice_state: VoiceState,
+        db_sess):
+    category = discord.utils.get(
+        member.guild.categories,
+        voice_state.channel.category_id
+    )
+
+    server = db_sess.query(Server).filter_by(
+        server_id=member.guild.id
+    ).first()
+    if not server:
+        server = Server(
+            server_id=member.guild.id
+        )
+        db_sess.add(server)
+    server_id = server.id
+
+    user = db_sess.query(User).filter_by(
+        user_id=member.id
+    ).first()
+    if not user:
+        user = User(
+            user_id=member.id
+        )
+    user_id = user.id
+
+    channel_settings = db_sess.query(ChannelSettings).filter_by(
+        server_id=server_id,
+        user_id=user_id
+    ).first()
+    if not channel_settings:
+        channel_settings = ChannelSettings(
+            name=f"{member.name}'s channel",
+            
+        )
+
+    await member.guild.create_voice_channel(
+        name=channel_name,
+        category=category
+    )
