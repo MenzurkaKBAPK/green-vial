@@ -29,7 +29,16 @@ from data.phrases import Phrase
 from data.servers import Server
 from data.stats import Stats
 from data.users import User
-from methods import Bot, get_emission_info, start_timer, style_channel
+from methods import (
+    Bot,
+    create_channel,
+    delete_channel,
+    get_emission_info,
+    get_key_by_value,
+    save_channel_data,
+    start_timer,
+    style_channel
+)
 from yagpt_request import yagpt_interact
 
 logger = logging.getLogger("discord")
@@ -60,7 +69,7 @@ MSC = datetime.timezone(
 updated_emission = False
 unsorted_data = dict()
 db_sess: Session = None
-private_channels = set()
+private_channels = dict()
 
 
 @client.command()
@@ -820,7 +829,10 @@ async def on_send_dms(bot: Bot):
 
 
 @client.event
-async def on_voice_state_update(member, before, after):
+async def on_voice_state_update(
+        member: discord.Member,
+        before: discord.VoiceState,
+        after: discord.VoiceState):
     if after.channel:
         server_id = member.guild.id
         channel_id = after.channel.id
@@ -837,30 +849,69 @@ async def on_voice_state_update(member, before, after):
             channel_type=CHANNEL_TYPES["NEW_CHANNEL"]).first()
 
         if channel:
-            print("Присоединение к [new channel]")
-            a = after.channel.overwrites
-            print(a)
-            for role, b in a.items():
-                print(type(role), role.id)
-                print(
-                    b._values
-                )
+            new_voice_channel = await create_channel(
+                member=member,
+                voice_state=after,
+                db_sess=db_sess
+            )
 
-            # логика создания канала
+            await member.move_to(new_voice_channel)
 
-            private_channels.add((server_id, channel_id))
+            private_channels[member.id] = (server_id, new_voice_channel.id)
 
         return
 
     if before.channel:
         server_id = member.guild.id
-        channel_id = after.channel.id
+        channel_id = before.channel.id
 
-        if (server_id, channel_id) in private_channels:
+        if (server_id, channel_id) in private_channels.values() \
+           and not before.channel.members:
 
-            # логика удаления канала
+            owner_id = get_key_by_value(
+                private_channels, (server_id, channel_id))
+            await delete_channel(
+                member=member,
+                owner_id=owner_id,
+                voice_state=before,
+                db_sess=db_sess
+            )
 
-            private_channels.remove((server_id, channel_id))
+            try:
+                del private_channels[owner_id]
+            except KeyError:
+                pass
+
+
+@client.event
+async def on_guild_channel_delete(channel):
+    if isinstance(channel, discord.VoiceChannel):
+        guild_id = channel.guild.id
+        channel_id = channel.id
+        if (guild_id, channel_id) in private_channels.values():
+            owner_id = get_key_by_value(
+                private_channels, (guild_id, channel_id))
+            if owner_id is None:
+                return
+
+            user_id = db_sess.query(User).filter_by(
+                user_id=owner_id
+            ).first().id
+            guild_id = db_sess.query(Server).filter_by(
+                server_id=channel.guild.id
+            ).first().id
+
+            await save_channel_data(
+                channel=channel,
+                user_id=user_id,
+                guild_id=guild_id,
+                db_sess=db_sess
+            )
+
+            try:
+                del private_channels[owner_id]
+            except KeyError:
+                pass
 
 
 def on_stats_update():
