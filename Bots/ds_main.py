@@ -70,6 +70,7 @@ updated_emission = False
 unsorted_data = dict()
 db_sess: Session = None
 private_channels = dict()
+private_channels_list = set()
 
 
 @client.command()
@@ -337,7 +338,7 @@ async def remove_permissions(ctx: commands.Context,
 async def add_new_channel(ctx: commands.Context,
                           channel_link: str):
     link_pattern = (
-        r"https:\/\/discord\.com\/channels\/(\d{18,18})\/(\d{18,19})"
+        r"https:\/\/discord\.com\/channels\/(\d{18,19})\/(\d{18,19})"
     )
     match_ = re.fullmatch(link_pattern, channel_link)
     if match_:
@@ -426,7 +427,7 @@ async def add_new_channel_error(ctx, error):
 async def remove_new_channel(ctx: commands.Context,
                              channel_link: str):
     link_pattern = (
-        r"https:\/\/discord\.com\/channels\/(\d{18,18})\/(\d{18,19})"
+        r"https:\/\/discord\.com\/channels\/(\d{18,19})\/(\d{18,19})"
     )
     match_ = re.fullmatch(link_pattern, channel_link)
     if match_:
@@ -858,8 +859,7 @@ async def on_voice_state_update(
             await member.move_to(new_voice_channel)
 
             private_channels[member.id] = (server_id, new_voice_channel.id)
-
-        return
+            private_channels_list.add((server_id, new_voice_channel.id))
 
     if before.channel:
         server_id = member.guild.id
@@ -879,6 +879,10 @@ async def on_voice_state_update(
 
             try:
                 del private_channels[owner_id]
+            except KeyError:
+                pass
+            try:
+                private_channels_list.remove((server_id, channel_id))
             except KeyError:
                 pass
 
@@ -910,6 +914,10 @@ async def on_guild_channel_delete(channel):
 
             try:
                 del private_channels[owner_id]
+            except KeyError:
+                pass
+            try:
+                private_channels_list.remove((guild_id, channel_id))
             except KeyError:
                 pass
 
@@ -966,3 +974,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+# создать канал -> выйти -> дурной канал остался
+# добавить периодическую проверку на пиватки

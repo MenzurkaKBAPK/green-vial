@@ -127,6 +127,8 @@ async def create_channel(
         user = User(
             user_id=member.id
         )
+        db_sess.add(user)
+        db_sess.commit()
     user_id = user.id
 
     channel_settings = db_sess.query(ChannelSettings).filter_by(
