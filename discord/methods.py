@@ -62,11 +62,14 @@ class HtmlToDict(HTMLParser):
 
 class Bot(commands.Bot):
     def __init__(self, **kwargs):
+        print("Bot class initializing...")
         super().__init__(**kwargs)
         self.synced = False
 
     async def on_ready(self):
+        print("Waiting for bot to be ready...")
         await self.wait_until_ready()
+        print("Bot ready, syncing id needed...")
         if not self.synced:
             await self.tree.sync(guild=discord.Object(id=720193412485349437))
             self.synced = True

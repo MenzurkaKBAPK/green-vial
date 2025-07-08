@@ -1,0 +1,5 @@
+sqlalchemy
+requests
+discord.py
+schedule
+python-dotenv

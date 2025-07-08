@@ -1,0 +1,24 @@
+services:
+  telegram:
+    build:
+      context: .
+      dockerfile: telegram/Dockerfile
+    container_name: tg
+    ports:
+      - "8081:8081"
+    networks:
+      - app-network
+
+  discord:
+    build:
+      context: .
+      dockerfile: discord/Dockerfile
+    container_name: ds
+    ports:
+      - "8080:8080"
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
