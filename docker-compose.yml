@@ -1,13 +1,15 @@
 services:
-  telegram:
-    build:
-      context: .
-      dockerfile: telegram/Dockerfile
-    container_name: tg
+  db:
+    image: postgres:16
+    restart: always
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
     ports:
-      - "8081:8081"
-    networks:
-      - app-network
+      - "5432:5432"
 
   discord:
     build:
@@ -16,9 +18,41 @@ services:
     container_name: ds
     ports:
       - "8080:8080"
+    depends_on:
+      - db
+    environment:
+      - DISCORD_TOKEN=${DISCORD_TOKEN}
+      - APPLICATION_ID=${APPLICATION_ID}
+      - YANDEX_CLOUD_CATALOG=${YANDEX_CLOUD_CATALOG}
+      - YANDEX_API_KEY=${YANDEX_API_KEY}
+      - YANDEX_GPT_MODEL=${YANDEX_GPT_MODEL}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_HOST=db
+      - POSTGRES_PORT=5432
+      - DEBUG=${DS_DEBUG}
+    networks:
+      - app-network
+
+  telegram:
+    build:
+      context: .
+      dockerfile: telegram/Dockerfile
+    container_name: tg
+    environment:
+      - API_HASH=${API_HASH}
+      - API_ID=${API_ID}
+      - API_TOKEN=${API_TOKEN}
+      - DEBUG=${TG_DEBUG}
+    ports:
+      - "8081:8081"
     networks:
       - app-network
 
 networks:
   app-network:
     driver: bridge
+
+volumes:
+  postgres_data:

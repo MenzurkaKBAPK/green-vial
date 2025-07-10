@@ -76,11 +76,6 @@ class Bot(commands.Bot):
         print(f"We have logged in as {self.user}.")
 
 
-def style_channel(channel: TextChannel, border):
-    k = len(channel.name) + 5
-    return border * k + f"\n{border} <#{channel.id}> {border}\n" + border * k
-
-
 def get_emission_info():
     response = requests.get(
         "https://last-emission-stalcraft.vercel.app/RU"
